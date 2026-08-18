@@ -2,8 +2,11 @@ name: Build Debug APK
 
 on:
   push:
-    branches: [ "**" ]
+    branches: [ "main" ]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -26,10 +29,36 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        id: build
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee build-log.txt
+        continue-on-error: true
 
       - name: Upload APK artifact
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+
+      - name: Push build log to ci-logs branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          mkdir -p /tmp/logpush
+          cp build-log.txt /tmp/logpush/build-log.txt
+          echo "${{ steps.build.outcome }}" > /tmp/logpush/status.txt
+          echo "${{ github.sha }}" > /tmp/logpush/commit.txt
+          git checkout --orphan ci-logs
+          git rm -rf . > /dev/null 2>&1 || true
+          cp /tmp/logpush/build-log.txt .
+          cp /tmp/logpush/status.txt .
+          cp /tmp/logpush/commit.txt .
+          git add build-log.txt status.txt commit.txt
+          git commit -m "CI log for ${{ github.sha }}"
+          git push --force origin ci-logs
+
+      - name: Fail job if build failed
+        if: steps.build.outcome == 'failure'
+        run: exit 1
