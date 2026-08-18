@@ -59,6 +59,21 @@ jobs:
           git commit -m "CI log for ${{ github.sha }}"
           git push --force origin ci-logs
 
+      - name: Push APK to apk-releases branch
+        if: steps.build.outcome == 'success'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          mkdir -p /tmp/apkpush
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/apkpush/app-debug.apk
+          git checkout main -- .
+          git checkout --orphan apk-releases
+          git rm -rf . > /dev/null 2>&1 || true
+          cp /tmp/apkpush/app-debug.apk .
+          git add app-debug.apk
+          git commit -m "APK build for ${{ github.sha }}"
+          git push --force origin apk-releases
+
       - name: Fail job if build failed
         if: steps.build.outcome == 'failure'
         run: exit 1
